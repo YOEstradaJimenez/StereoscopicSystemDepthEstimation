@@ -1,0 +1,504 @@
+#include <iostream>
+#include <opencv2/opencv.hpp>
+
+int main()
+{
+    int Height = 4;
+    int Width = 4;
+    int MaxHeight = 70;
+    int MaxWidth = 45;
+
+    std::vector<std::vector<int>> CameraSpaceMatrix;
+    std::vector<int> UnsortedHeights;
+
+    int FilterHeight = 20;
+    double UpperSquarePercent = 1.5;
+    double LowerSquarePercent = 0.5;
+    int CameraHeight = 480;
+    //int DisparityFactor = 56210;
+    //int DisparityFactor = 64155;
+    int DisparityFactor = 69600;
+    int HeightContainer = 26;
+
+    cv::Mat LeftImg = cv::imread("C:\\Users\\octav\\Videos\\Working Area\\L0.jpg");
+
+    cv::Mat GrayLeftImg;
+    cv::Mat GrayRightImg;
+
+    cv::Mat ThreshLeftImg;
+    cv::Mat ThreshRightImg;
+
+    cv::Mat AdaptiveThreshLeftImg;
+    cv::Mat AdaptiveThreshRightImg;
+
+    std::vector<std::vector<cv::Point> > LeftImgContour;
+    std::vector<std::vector<cv::Point> > RightImgContour;
+
+    std::vector<std::vector<int>> UnsortedLeftImgBoxCoordinates;
+    std::vector<std::vector<int>> UnsortedRightImgBoxCoordinates;
+
+    std::vector<std::vector<int>> SortedLeftImgBoxCoordinates;
+    std::vector<std::vector<int>> SortedRightImgBoxCoordinates;
+    
+    std::vector<std::vector<int>> DisparityLeftImgPoint;
+    std::vector<std::vector<int>> DisparityRightImgPoint;
+
+    if (LeftImg.empty())
+    {
+        std::cout << "Could not open or find the image" << std::endl;
+        std::cin.get(); //wait for any key press
+        return -1;
+    }
+
+    cv::Mat RightImg = cv::imread("C:\\Users\\octav\\Videos\\Working Area\\R0.jpg");
+
+    if (RightImg.empty())
+    {
+        std::cout << "Could not open or find the image" << std::endl;
+        std::cin.get(); //wait for any key press
+        return -1;
+    }
+
+    cv::imshow("Left Camera Image", LeftImg);
+    cv::cvtColor(LeftImg, GrayLeftImg, cv::COLOR_BGR2GRAY);
+    cv::threshold(GrayLeftImg, ThreshLeftImg, 0, 255, 8);
+    cv::imshow("Left Threshold Camera Image", ThreshLeftImg);
+
+
+    cv::imshow("Right Camera Image", RightImg);
+    cv::cvtColor(RightImg, GrayRightImg, cv::COLOR_BGR2GRAY);
+    cv::threshold(GrayRightImg, ThreshRightImg, 0, 255, 8);
+    cv::imshow("Right Threshold Camera Image", ThreshRightImg);
+
+
+    cv::findContours(ThreshLeftImg, LeftImgContour, cv::RetrievalModes::RETR_EXTERNAL, cv::ContourApproximationModes::CHAIN_APPROX_SIMPLE);
+    cv::findContours(ThreshRightImg, RightImgContour, cv::RetrievalModes::RETR_EXTERNAL, cv::ContourApproximationModes::CHAIN_APPROX_SIMPLE);
+
+    //Eliminating Small Bounding Boxes
+    int CounterLeftImg = 0;
+    int SumLeftImgBoundingBoxes = 0;
+    for (int i = 0; i < LeftImgContour.size(); i++)
+    {
+        cv::Rect BoundingBoxes = cv::boundingRect(LeftImgContour[i]);
+        SumLeftImgBoundingBoxes = SumLeftImgBoundingBoxes + BoundingBoxes.width;
+        CounterLeftImg++;
+    }
+
+    //Drawing Bounding Boxes
+    for (int i = 0; i < LeftImgContour.size(); i++)
+    {
+        cv::Rect BoundingBoxes = cv::boundingRect(LeftImgContour[i]);
+        if (CounterLeftImg > 0 && SumLeftImgBoundingBoxes > 0)
+        {
+            if (BoundingBoxes.height > FilterHeight)
+            {
+                //** modification
+                if (BoundingBoxes.x > 44 && BoundingBoxes.x < 436)
+                {
+                    double Square = 1.0 * BoundingBoxes.height / BoundingBoxes.width;
+                    if (Square < UpperSquarePercent && Square > LowerSquarePercent)
+                    {
+                        if (BoundingBoxes.height < MaxHeight)
+                        {
+                            cv::rectangle(LeftImg, BoundingBoxes, cv::Scalar(0, 0, 255), 1);
+                            std::vector<int>TempLeft;
+                            TempLeft.push_back(BoundingBoxes.x);
+                            TempLeft.push_back(BoundingBoxes.y);
+                            TempLeft.push_back(BoundingBoxes.width);
+                            TempLeft.push_back(BoundingBoxes.height);
+
+                            UnsortedLeftImgBoxCoordinates.push_back(TempLeft);
+                        }
+                    }
+                }
+                    
+                
+            }
+        }
+    }
+
+    //Temporal::1
+    std::cout << UnsortedLeftImgBoxCoordinates.size() << std::endl;
+    for (int a = 0; a < UnsortedLeftImgBoxCoordinates.size(); a++)
+    {
+        std::cout << UnsortedLeftImgBoxCoordinates[a][0]<< "," << UnsortedLeftImgBoxCoordinates[a][1] << "," << UnsortedLeftImgBoxCoordinates[a][2]<< "," << UnsortedLeftImgBoxCoordinates[a][3] <<std::endl;
+    }
+    std::cout << std::endl;
+
+    cv::imshow("Left Camera Image", LeftImg);
+
+    std::vector<int> OrderLeftImgBoxCoordinates;
+    std::vector<std::vector<int>> GroupRowsLeftImgTemporal;
+    std::vector<std::vector<int>> CopyUnsortedLeftImgBoxCoordinates = UnsortedLeftImgBoxCoordinates;
+
+    for (int p = 0; p < Height; p++)
+    {
+        for (int n = 0; n < Width; n++)
+        {
+            int TempIterator = 0;
+            int TempWidth = 0;
+            int RefHeight = LeftImg.rows + 1;
+
+            for (int s = 0; s < CopyUnsortedLeftImgBoxCoordinates.size(); s++)
+            {
+                if (CopyUnsortedLeftImgBoxCoordinates[s][1] < RefHeight && CopyUnsortedLeftImgBoxCoordinates[s][1] != -1)
+                {
+                    RefHeight = CopyUnsortedLeftImgBoxCoordinates[s][1];
+                    TempIterator = s;
+                    TempWidth = CopyUnsortedLeftImgBoxCoordinates[s][0];
+                }
+            }
+
+            std::cout << RefHeight << std::endl;
+
+            std::vector<int>TempVector;
+
+            TempVector.push_back(TempWidth);
+            TempVector.push_back(TempIterator);
+            GroupRowsLeftImgTemporal.push_back(TempVector);
+            CopyUnsortedLeftImgBoxCoordinates[TempIterator][1] = -1;
+        }
+
+        std::vector<std::vector<int>> CopyGroupRowsLeftImgTemporal = GroupRowsLeftImgTemporal;
+        for (int m = 0; m < Width; m++)
+        {
+            int TempIterator = 0;
+            int RefWidth = LeftImg.cols + 1;
+
+            for (int s = 0; s < CopyGroupRowsLeftImgTemporal.size(); s++)
+            {
+                if (CopyGroupRowsLeftImgTemporal[s][0] < RefWidth && CopyGroupRowsLeftImgTemporal[s][0] != -1)
+                {
+                    RefWidth = CopyGroupRowsLeftImgTemporal[s][0];
+                    TempIterator = s;
+                }
+            }
+
+            OrderLeftImgBoxCoordinates.push_back(CopyGroupRowsLeftImgTemporal[TempIterator][1]);
+            CopyGroupRowsLeftImgTemporal[TempIterator][0] = -1;
+        }
+
+        for (int b = 0; b < GroupRowsLeftImgTemporal.size(); b++)
+        {
+            std::cout << GroupRowsLeftImgTemporal[b][0] << "," << GroupRowsLeftImgTemporal[b][1] << std::endl;
+        }
+
+        std::vector<std::vector<int>>().swap(GroupRowsLeftImgTemporal);
+    }
+    
+
+
+    for (int c = 0; c < OrderLeftImgBoxCoordinates.size(); c++)
+    {
+        std::cout << OrderLeftImgBoxCoordinates[c] << std::endl;
+    }
+
+    for (int i = 0; i < OrderLeftImgBoxCoordinates.size(); i++)
+    {
+        SortedLeftImgBoxCoordinates.push_back(UnsortedLeftImgBoxCoordinates[OrderLeftImgBoxCoordinates[i]]);
+        std::cout << UnsortedLeftImgBoxCoordinates[OrderLeftImgBoxCoordinates[i]][0] << "," << UnsortedLeftImgBoxCoordinates[OrderLeftImgBoxCoordinates[i]][1] << std::endl;
+    }
+
+
+    //Eliminating Small Bounding Boxes
+    int CounterRightImg = 0;
+    int SumRightImgBoundingBoxes = 0;
+    for (int i = 0; i < RightImgContour.size(); i++)
+    {
+        cv::Rect BoundingBoxes = cv::boundingRect(RightImgContour[i]);
+        SumRightImgBoundingBoxes = SumRightImgBoundingBoxes + BoundingBoxes.width;
+        CounterRightImg++;
+    }
+
+    //Drawing Bounding Boxes
+    for (int i = 0; i < RightImgContour.size(); i++)
+    {
+        cv::Rect BoundingBoxes = cv::boundingRect(RightImgContour[i]);
+        if (CounterRightImg > 0 && SumRightImgBoundingBoxes > 0)
+        {
+            if (BoundingBoxes.height > FilterHeight)
+            {
+                //** modification
+                if (BoundingBoxes.x > 185 && BoundingBoxes.x < 585)
+                {
+                    double Square = 1.0 * BoundingBoxes.height / BoundingBoxes.width;
+                    if (Square < UpperSquarePercent && Square > LowerSquarePercent)
+                    {
+                        //std::cout << "Here Heith" << BoundingBoxes.height <<std::endl;
+                        std::cout << "div" << 1.0 * BoundingBoxes.height / BoundingBoxes.width << std::endl;
+                        if (BoundingBoxes.height < MaxHeight)
+                        {
+                            cv::rectangle(RightImg, BoundingBoxes, cv::Scalar(255, 0, 0), 1);
+                            std::vector<int>TempRight;
+                            TempRight.push_back(BoundingBoxes.x);
+                            TempRight.push_back(BoundingBoxes.y);
+                            TempRight.push_back(BoundingBoxes.width);
+                            TempRight.push_back(BoundingBoxes.height);
+
+                            UnsortedRightImgBoxCoordinates.push_back(TempRight);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    //Temporal::1
+    std::cout << UnsortedRightImgBoxCoordinates.size() << std::endl;
+    for (int a = 0; a < UnsortedRightImgBoxCoordinates.size(); a++)
+    {
+        std::cout << UnsortedRightImgBoxCoordinates[a][0]<< "," << UnsortedRightImgBoxCoordinates[a][1] << "," << UnsortedRightImgBoxCoordinates[a][2]<< "," << UnsortedRightImgBoxCoordinates[a][3] <<std::endl;
+    }
+    std::cout << std::endl;
+
+    cv::imshow("Right Camera Image", RightImg);
+
+    std::vector<int> OrderRightImgBoxCoordinates;
+    std::vector<std::vector<int>> GroupRowsRightImgTemporal;
+    std::vector<std::vector<int>> CopyUnsortedRightImgBoxCoordinates = UnsortedRightImgBoxCoordinates;
+
+    for (int p = 0; p < Height; p++)
+    {
+        for (int n = 0; n < Width; n++)
+        {
+            int TempIterator = 0;
+            int TempWidth = 0;
+            int RefHeight = RightImg.rows + 1;
+
+            for (int s = 0; s < CopyUnsortedRightImgBoxCoordinates.size(); s++)
+            {
+                if (CopyUnsortedRightImgBoxCoordinates[s][1] < RefHeight && CopyUnsortedRightImgBoxCoordinates[s][1] != -1)
+                {
+                    RefHeight = CopyUnsortedRightImgBoxCoordinates[s][1];
+                    TempIterator = s;
+                    TempWidth = CopyUnsortedRightImgBoxCoordinates[s][0];
+                }
+            }
+
+            std::cout << RefHeight << std::endl;
+
+            std::vector<int>TempVector;
+
+            TempVector.push_back(TempWidth);
+            TempVector.push_back(TempIterator);
+            GroupRowsRightImgTemporal.push_back(TempVector);
+            CopyUnsortedRightImgBoxCoordinates[TempIterator][1] = -1;
+        }
+
+        std::vector<std::vector<int>> CopyGroupRowsRightImgTemporal = GroupRowsRightImgTemporal;
+        for (int m = 0; m < Width; m++)
+        {
+            int TempIterator = 0;
+            int RefWidth = RightImg.cols + 1;
+
+            for (int s = 0; s < CopyGroupRowsRightImgTemporal.size(); s++)
+            {
+                if (CopyGroupRowsRightImgTemporal[s][0] < RefWidth && CopyGroupRowsRightImgTemporal[s][0] != -1)
+                {
+                    RefWidth = CopyGroupRowsRightImgTemporal[s][0];
+                    TempIterator = s;
+                }
+            }
+
+            OrderRightImgBoxCoordinates.push_back(CopyGroupRowsRightImgTemporal[TempIterator][1]);
+            CopyGroupRowsRightImgTemporal[TempIterator][0] = -1;
+        }
+
+        for (int b = 0; b < GroupRowsRightImgTemporal.size(); b++)
+        {
+            std::cout << GroupRowsRightImgTemporal[b][0] << "," << GroupRowsRightImgTemporal[b][1] << std::endl;
+        }
+
+        std::vector<std::vector<int>>().swap(GroupRowsRightImgTemporal);
+    }
+    
+
+
+    for (int c = 0; c < OrderRightImgBoxCoordinates.size(); c++)
+    {
+        std::cout << OrderRightImgBoxCoordinates[c] << std::endl;
+    }
+
+
+    for (int i = 0; i < RightImgContour.size(); i++)
+    {
+        cv::Rect BoundingBoxes = cv::boundingRect(RightImgContour[i]);
+        std::vector<int>TempRight;
+        TempRight.push_back(BoundingBoxes.x);
+        TempRight.push_back(BoundingBoxes.y);
+        TempRight.push_back(BoundingBoxes.width);
+        TempRight.push_back(BoundingBoxes.height);
+        
+            UnsortedRightImgBoxCoordinates.push_back(TempRight);
+    }
+
+    for (int i = 0; i < OrderRightImgBoxCoordinates.size(); i++)
+    {
+        SortedRightImgBoxCoordinates.push_back(UnsortedRightImgBoxCoordinates[OrderRightImgBoxCoordinates[i]]);
+        std::cout << UnsortedRightImgBoxCoordinates[OrderRightImgBoxCoordinates[i]][0] <<","<< UnsortedRightImgBoxCoordinates[OrderRightImgBoxCoordinates[i]][1] << std::endl;
+    }
+
+    cv::imshow("Right Camera Image", RightImg);
+    
+    int SectionsIterator = 0;
+    
+    for (int i = 0; i < Height; i ++)
+    {
+        
+        for (int j = 0; j < Width; j++)
+        {
+            std::vector<int> TempRightImgVector;
+            std::vector<int> TempLeftImgVector;
+            if (i < 0.5 * Height && j < 0.5 * Width)
+            {
+                TempRightImgVector.push_back(SortedRightImgBoxCoordinates[SectionsIterator][0]);
+                TempLeftImgVector.push_back(SortedLeftImgBoxCoordinates[SectionsIterator][0]);
+
+                TempRightImgVector.push_back(SortedRightImgBoxCoordinates[SectionsIterator][1]);
+                TempLeftImgVector.push_back(SortedLeftImgBoxCoordinates[SectionsIterator][1]);
+
+                DisparityLeftImgPoint.push_back(TempLeftImgVector);
+                DisparityRightImgPoint.push_back(TempRightImgVector);
+
+                std::vector<int>().swap(TempRightImgVector);
+                std::vector<int>().swap(TempLeftImgVector);
+            }
+            else
+            {
+                if (i < 0.5 * Height && j >= 0.5 * Width)
+                {
+                    TempRightImgVector.push_back(SortedRightImgBoxCoordinates[SectionsIterator][0]+SortedRightImgBoxCoordinates[SectionsIterator][2]);
+                    TempLeftImgVector.push_back(SortedLeftImgBoxCoordinates[SectionsIterator][0]+SortedLeftImgBoxCoordinates[SectionsIterator][2]);
+
+                    TempRightImgVector.push_back(SortedRightImgBoxCoordinates[SectionsIterator][1]);
+                    TempLeftImgVector.push_back(SortedLeftImgBoxCoordinates[SectionsIterator][1]);
+
+                    DisparityLeftImgPoint.push_back(TempLeftImgVector);
+                    DisparityRightImgPoint.push_back(TempRightImgVector);
+
+                    std::vector<int>().swap(TempRightImgVector);
+                    std::vector<int>().swap(TempLeftImgVector);
+                }
+                else
+                {
+                    if (i >= 0.5 * Height && j < 0.5 * Width)
+                    {
+                        TempRightImgVector.push_back(SortedRightImgBoxCoordinates[SectionsIterator][0]);
+                        TempLeftImgVector.push_back(SortedLeftImgBoxCoordinates[SectionsIterator][0]);
+
+                        TempRightImgVector.push_back(SortedRightImgBoxCoordinates[SectionsIterator][1]+SortedRightImgBoxCoordinates[SectionsIterator][3]);
+                        TempLeftImgVector.push_back(SortedLeftImgBoxCoordinates[SectionsIterator][1]+SortedLeftImgBoxCoordinates[SectionsIterator][3]);
+
+                        DisparityLeftImgPoint.push_back(TempLeftImgVector);
+                        DisparityRightImgPoint.push_back(TempRightImgVector);
+
+                        std::vector<int>().swap(TempRightImgVector);
+                        std::vector<int>().swap(TempLeftImgVector);
+                    }
+                    else
+                    {
+                        TempRightImgVector.push_back(SortedRightImgBoxCoordinates[SectionsIterator][0]+SortedRightImgBoxCoordinates[SectionsIterator][2]);
+                        TempLeftImgVector.push_back(SortedLeftImgBoxCoordinates[SectionsIterator][0]+SortedLeftImgBoxCoordinates[SectionsIterator][2]);
+
+                        TempRightImgVector.push_back(SortedRightImgBoxCoordinates[SectionsIterator][1] + SortedRightImgBoxCoordinates[SectionsIterator][3]);
+                        TempLeftImgVector.push_back(SortedLeftImgBoxCoordinates[SectionsIterator][1] + SortedLeftImgBoxCoordinates[SectionsIterator][3]);
+
+                        DisparityLeftImgPoint.push_back(TempLeftImgVector);
+                        DisparityRightImgPoint.push_back(TempRightImgVector);
+
+                        std::vector<int>().swap(TempRightImgVector);
+                        std::vector<int>().swap(TempLeftImgVector);
+                    }
+
+                }
+            }
+            SectionsIterator++;
+        }
+    }
+
+    std::cout << std::endl;
+    std::cout << std::endl;
+    std::cout << std::endl;
+
+    if (DisparityLeftImgPoint.size() == DisparityRightImgPoint.size())
+    {
+        for (int i = 0; i < DisparityLeftImgPoint.size(); i++)
+        {
+            std::cout << "   Disparity (Xr: " << DisparityLeftImgPoint[i][0] << ", Xl: " << DisparityRightImgPoint[i][0] << ")";
+
+            int Diff = DisparityRightImgPoint[i][0] - DisparityLeftImgPoint[i][0];
+            if (Diff == 0)
+            {
+                Diff++;
+            }
+            
+            double ApproxHeight = 1.0 * DisparityFactor / Diff;
+   
+            // int ApproxLevel = (CameraHeight + ApproxHeight) / HeightContainer;
+            double ApproxLevel = 1.0 * (CameraHeight - ApproxHeight) / HeightContainer;
+
+            std::cout << "  Approximated Depth: " << ApproxHeight << ", Approximated Level: " << ApproxLevel;
+
+            // Separating Integer from Reminder
+            int integer = (int) ApproxLevel;
+            double reminder = ApproxLevel - integer * 1.0;
+            
+            if (reminder >= 0.5)
+            {
+                integer++;
+            }
+
+            std::cout << ", Determined Level: <" << integer << ">" << std::endl;
+
+            // Unsorted List of Heights
+            UnsortedHeights.push_back(integer);
+        }
+    }
+
+    std::cout << std::endl;
+    std::cout << std::endl;
+    std::cout << std::endl;
+
+    std::cout << std::endl;
+    for (int i = 0; i < UnsortedHeights.size(); i++)
+    {
+        std::cout << UnsortedHeights[i] << "-" << std::endl;
+    }
+
+    // Creating CameraSpaceMatrix
+    std::cout << std::endl;
+    std::reverse(UnsortedHeights.begin(), UnsortedHeights.end());
+    for (int i = 0; i < UnsortedHeights.size(); i++)
+    {
+        std::cout << UnsortedHeights[i] << "-" << std::endl;
+    }
+    std::cout << std::endl;
+    int Iterator = 0;
+    for (int m = 0; m < Height ; m++)
+    {
+        std::vector<int> TempWidth;
+        for (int n = 0; n < Width; n++)
+        {
+            TempWidth.push_back(UnsortedHeights[Iterator]);
+            Iterator++;
+            std::cout << Iterator <<std::endl;
+        }
+
+        std::cout << Iterator << std::endl;
+
+        std::reverse(TempWidth.begin(), TempWidth.end());
+        CameraSpaceMatrix.push_back(TempWidth);
+
+        for (int i = 0; i < TempWidth.size(); i++)
+        {
+            std::cout << TempWidth[i] << "-" << std::endl;
+        }
+        std::cout << std::endl;
+    }
+
+
+    cv::waitKey(0);
+    cv::destroyAllWindows();
+    return 0;
+
+}
